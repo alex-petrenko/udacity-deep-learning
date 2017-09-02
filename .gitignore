@@ -99,3 +99,9 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# project-specific
+*.tar.gz
+*.pickle
+notMNIST_large/
+notMNIST_small/
