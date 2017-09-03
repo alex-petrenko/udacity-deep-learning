@@ -1,0 +1,44 @@
+Logistic classifier:
+
+50:
+Sparsity: 0.00%
+Train score: 1.0000
+Test score: 0.4493
+100:
+Sparsity: 0.00%
+Train score: 1.0000
+Test score: 0.6487
+1000:
+Sparsity: 0.00%
+Train score: 0.9280
+Test score: 0.7928
+5000:
+Sparsity: 0.00%
+Train score: 0.8560
+Test score: 0.8163
+200000:
+Sparsity: 0.00%
+Train score: 0.8247
+Test score: 0.8199
+
+Logistic classifier (sanitized dataset):
+50:
+Sparsity: 0.00%
+Train score: 1.0000
+Test score: 0.4760
+100:
+Sparsity: 0.00%
+Train score: 1.0000
+Test score: 0.6962
+1000:
+Sparsity: 0.00%
+Train score: 0.9280
+Test score: 0.8523
+5000:
+Sparsity: 0.00%
+Train score: 0.8560
+Test score: 0.8714
+200000:
+Sparsity: 0.00%
+Train score: 0.8247
+Test score: 0.8775

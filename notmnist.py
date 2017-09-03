@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import pickle
 import random
 import tarfile
@@ -285,7 +286,7 @@ def find_duplicates(dataset1, labels1, dataset2, labels2, threshold=eps):
         if dataset2_idx % 100 == 0:
             print('Processed', dataset2_idx, 'duplicates:', len(duplicate_indices))
 
-    print('Found total of', len(duplicate_indices), 'duplicates!')
+    print('Found total of', len(duplicate_indices), 'duplicantes!')
     return duplicate_indices
 
 def sanitize_datasets(datasets):
@@ -305,7 +306,7 @@ def sanitize_datasets(datasets):
     valid_dataset_sanitized = np.delete(valid_dataset, duplicate_indices, axis=0)
     valid_labels_sanitized = np.delete(valid_labels, duplicate_indices, axis=0)
 
-    pickle_file_sanitized = os.path.join(data_root, 'notMNIST_sanitized2.pickle')
+    pickle_file_sanitized = os.path.join(data_root, 'notMNIST_sanitized.pickle')
     try:
         with open(pickle_file_sanitized, 'wb') as fobj:
             save = {
@@ -321,13 +322,69 @@ def sanitize_datasets(datasets):
         print('Unable to save data to', pickle_file_sanitized, ':', e)
         raise
 
+def train_logistic_classifier(x, y, x_test, y_test, num_train_samples=None):
+    tstart = time.time()
+    if num_train_samples is None:
+        num_train_samples = x.shape[0]
+    x = x[:num_train_samples]
+    y = y[:num_train_samples]
+
+    resolution = x.shape[1]
+    x = x.reshape(num_train_samples, resolution * resolution)
+    x_test = x_test.reshape(x_test.shape[0], resolution * resolution)
+
+    classifier = LogisticRegression(
+        C=100./num_train_samples,
+        multi_class='multinomial',
+        penalty='l2',
+        solver='saga',
+        max_iter=200,
+    )
+    classifier.fit(x, y)
+    sparsity = np.mean(classifier.coef_ == 0) * 100
+    score_train = classifier.score(x, y)
+    score_test = classifier.score(x_test, y_test)
+    print('Sparsity: %.2f%%' % sparsity)
+    print('Train score: %.4f' % score_train)
+    print('Test score: %.4f' % score_test)
+
+    interactive = True
+    if interactive:
+        for i in range(10):
+            image = x_test[i]
+            prediction = classifier.predict(image.reshape((1, resolution * resolution)))[0]
+            prediction_proba = classifier.predict_proba(image.reshape((1, resolution * resolution)))
+            print('Prediction:', prediction, chr(ord('a') + prediction))
+            print('Prediction proba:', prediction_proba)
+            show_image_float(image.reshape((resolution, resolution)))
+
+    coef = classifier.coef_.copy()
+    plt.figure(figsize=(10, 5))
+    scale = np.abs(coef).max()
+    for i in range(10):
+        plot = plt.subplot(2, 5, i + 1)
+        plot.imshow(
+            coef[i].reshape(resolution, resolution),
+            interpolation='nearest',
+            cmap=plt.cm.RdBu,
+            vmin=-scale,
+            vmax=scale,
+        )
+        plot.set_xticks(())
+        plot.set_yticks(())
+        plot.set_xlabel('Class %i' % i)
+    plt.suptitle('Classification vector for...')
+
+    run_time = time.time() - tstart
+    print('Example run in %.3f s' % run_time)
+    plt.show()
+
 def main():
     pickle_file = os.path.join(data_root, 'notMNIST_sanitized.pickle')
     if not os.path.isfile(pickle_file):
         generate_datasets(pickle_file)
 
     datasets = load_datasets(pickle_file)
-    sanitize_datasets(datasets)
 
     train_dataset, train_labels = extract_dataset(datasets, 'train')
     test_dataset, test_labels = extract_dataset(datasets, 'valid')
@@ -337,9 +394,16 @@ def main():
     print(test_dataset.shape, test_labels.shape)
     print(valid_dataset.shape, valid_labels.shape)
 
-    verify_dataset(train_dataset, train_labels)
-    verify_dataset(test_dataset, test_labels)
-    verify_dataset(valid_dataset, valid_labels)
+    def train(samples=None):
+        train_logistic_classifier(
+            train_dataset,
+            train_labels,
+            test_dataset,
+            test_labels,
+            num_train_samples=samples,
+        )
+
+    train(300)
 
     return 0
 
