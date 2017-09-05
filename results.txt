@@ -42,3 +42,10 @@ Test score: 0.8714
 Sparsity: 0.00%
 Train score: 0.8247
 Test score: 0.8775
+
+Tensorflow logistic classifier, SGD (batch 128):
+09-06 02:07:03.358 assignment_02_fullyconnected.py:103 INFO Minibatch loss at step 30000 is 0.661182
+09-06 02:07:03.359 assignment_02_fullyconnected.py:104 INFO Minibatch accuracy: 82.8%
+09-06 02:07:03.434 assignment_02_fullyconnected.py:107 INFO Test accuracy: 82.2%
+
+

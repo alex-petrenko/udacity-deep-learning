@@ -13,17 +13,18 @@ from scipy import ndimage
 from urllib.request import urlretrieve
 from sklearn.linear_model import LogisticRegression
 
+from utils import *
+from dataset_utils import *
 
-eps = 1e-5
+
+logger = logging.getLogger(os.path.basename(__file__))
 
 url = 'https://commondatastorage.googleapis.com/books1000/'
 last_percent_reported = None
 data_root = '.' # Change me to store data elsewhere
 
-num_classes = 10
 np.random.seed(133)
 
-image_size = 28  # Pixel width and height.
 pixel_depth = 255.0  # Number of levels per pixel.
 
 train_size = 200000
@@ -87,22 +88,22 @@ def maybe_extract(filename, force=False):
         for d in sorted(os.listdir(root))
         if os.path.isdir(os.path.join(root, d))
     ]
-    if len(data_folders) != num_classes:
-        raise Exception('Expected %d folders, one per class. Found %d instead.' % (num_classes, len(data_folders)))
+    if len(data_folders) != NUM_CLASSES:
+        raise Exception('Expected %d folders, one per class. Found %d instead.' % (NUM_CLASSES, len(data_folders)))
     print(data_folders)
     return data_folders
 
 def load_letter(folder, min_num_images):
     """Load the data for a single letter label."""
     image_files = os.listdir(folder)
-    dataset = np.ndarray(shape=(len(image_files), image_size, image_size), dtype=np.float32)
+    dataset = np.ndarray(shape=(len(image_files), IMAGE_RES, IMAGE_RES), dtype=np.float32)
     print(folder)
     num_images = 0
     for image in image_files:
         image_file = os.path.join(folder, image)
         try:
             image_data = (ndimage.imread(image_file).astype(float) - pixel_depth / 2) / pixel_depth
-            if image_data.shape != (image_size, image_size):
+            if image_data.shape != (IMAGE_RES, IMAGE_RES):
                 raise Exception('Unexpected image shape: %s' % str(image_data.shape))
             dataset[num_images, :, :] = image_data
             num_images += 1
@@ -146,11 +147,11 @@ def make_arrays(nb_rows, img_size):
     return dataset, labels
 
 def merge_datasets(pickle_files, train_size, valid_size=0):
-    num_classes = len(pickle_files)
-    valid_dataset, valid_labels = make_arrays(valid_size, image_size)
-    train_dataset, train_labels = make_arrays(train_size, image_size)
-    vsize_per_class = valid_size // num_classes
-    tsize_per_class = train_size // num_classes
+    NUM_CLASSES = len(pickle_files)
+    valid_dataset, valid_labels = make_arrays(valid_size, IMAGE_RES)
+    train_dataset, train_labels = make_arrays(train_size, IMAGE_RES)
+    vsize_per_class = valid_size // NUM_CLASSES
+    tsize_per_class = train_size // NUM_CLASSES
 
     start_v, start_t = 0, 0
     end_v, end_t = vsize_per_class, tsize_per_class
@@ -237,19 +238,7 @@ def generate_datasets(pickle_file):
             print('Unable to save data to', pickle_file, ':', e)
             raise
 
-def load_datasets(pickle_file):
-    try:
-        with open(pickle_file, 'rb') as fobj:
-            datasets = pickle.load(fobj)
-    except Exception as e:
-        print('Unable to process data from', pickle_file, ':', e)
-        raise
-    return datasets
-
-def extract_dataset(datasets, name):
-    return datasets[name + '_dataset'], datasets[name + '_labels']
-
-def find_duplicates(dataset1, labels1, dataset2, labels2, threshold=eps):
+def find_duplicates(dataset1, labels1, dataset2, labels2, threshold=EPS):
     means = np.mean(dataset1, axis=(1,2))
     indices = means.argsort()
     num_groups = 2000
@@ -348,7 +337,7 @@ def train_logistic_classifier(x, y, x_test, y_test, num_train_samples=None):
     print('Train score: %.4f' % score_train)
     print('Test score: %.4f' % score_test)
 
-    interactive = True
+    interactive = False
     if interactive:
         for i in range(10):
             image = x_test[i]
@@ -378,9 +367,13 @@ def train_logistic_classifier(x, y, x_test, y_test, num_train_samples=None):
     run_time = time.time() - tstart
     print('Example run in %.3f s' % run_time)
     plt.show()
+    return classifier
 
 def main():
-    pickle_file = os.path.join(data_root, 'notMNIST_sanitized.pickle')
+    """Script entry point."""
+    init_logger(os.path.basename(__file__))
+
+    pickle_file = os.path.join(data_root, PICKLE_FILE)
     if not os.path.isfile(pickle_file):
         generate_datasets(pickle_file)
 
@@ -390,12 +383,12 @@ def main():
     test_dataset, test_labels = extract_dataset(datasets, 'valid')
     valid_dataset, valid_labels = extract_dataset(datasets, 'test')
 
-    print(train_dataset.shape, train_labels.shape)
-    print(test_dataset.shape, test_labels.shape)
-    print(valid_dataset.shape, valid_labels.shape)
+    logger.info('%r %r', train_dataset.shape, train_labels.shape)
+    logger.info('%r %r', test_dataset.shape, test_labels.shape)
+    logger.info('%r %r', valid_dataset.shape, valid_labels.shape)
 
     def train(samples=None):
-        train_logistic_classifier(
+        return train_logistic_classifier(
             train_dataset,
             train_labels,
             test_dataset,
@@ -403,7 +396,9 @@ def main():
             num_train_samples=samples,
         )
 
-    train(300)
+    classifier = train(300)
+    score_valid = classifier.score(valid_dataset.reshape(valid_dataset.shape[0], 28*28), valid_labels)
+    print('Valid score: %.4f' % score_valid)
 
     return 0
 
