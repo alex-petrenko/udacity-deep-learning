@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from utils import *
+from dnn_utils import *
 from dataset_utils import *
 
 
@@ -22,13 +23,6 @@ def parse_args():
         help='Use sanitized version of the test and validation datasets',
     )
     return parser.parse_args()
-
-def flatten_dataset(data, labels):
-    assert data.ndim == 3
-    assert data.shape[1] == data.shape[2]
-    data = data.reshape((-1, data.shape[1] * data.shape[2])).astype(np.float32)
-    labels = (np.arange(NUM_CLASSES) == labels[:, None]).astype(np.float32)
-    return data, labels
 
 def calc_accuracy(predictions, labels):
     total_correct = np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
@@ -132,7 +126,7 @@ def train_perceptron(train_dataset, train_labels, test_dataset, test_labels):
     with tf.Session(graph=graph) as sess:
         tf.global_variables_initializer().run()
         logger.info('Initialized')
-        for step in range(30001):
+        for step in range(3000):
             offset = (step * batch_size) % (train_labels.shape[0] - batch_size)
             batch_data = train_dataset[offset:(offset + batch_size), :]
             batch_labels = train_labels[offset:(offset + batch_size), :]
@@ -162,15 +156,9 @@ def main():
     pickle_filename = PICKLE_FILE_SANITIZED if args.sanitized else PICKLE_FILE
     datasets = load_datasets(pickle_filename)
 
-    train_dataset, train_labels = extract_dataset(datasets, 'train')
-    test_dataset, test_labels = extract_dataset(datasets, 'valid')
-    valid_dataset, valid_labels = extract_dataset(datasets, 'test')
-
-    del datasets
-
-    train_dataset, train_labels = flatten_dataset(train_dataset, train_labels)
-    test_dataset, test_labels = flatten_dataset(test_dataset, test_labels)
-    valid_dataset, valid_labels = flatten_dataset(valid_dataset, valid_labels)
+    train_dataset, train_labels = get_flattened_dataset(datasets, 'train')
+    test_dataset, test_labels = get_flattened_dataset(datasets, 'valid')
+    valid_dataset, valid_labels = get_flattened_dataset(datasets, 'test')
 
     logger.info('%r %r', train_dataset.shape, train_labels.shape)
     logger.info('%r %r', test_dataset.shape, test_labels.shape)

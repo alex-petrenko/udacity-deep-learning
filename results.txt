@@ -45,7 +45,46 @@ Test score: 0.8775
 
 Tensorflow logistic classifier, SGD (batch 128):
 09-06 02:07:03.358 assignment_02_fullyconnected.py:103 INFO Minibatch loss at step 30000 is 0.661182
-09-06 02:07:03.359 assignment_02_fullyconnected.py:104 INFO Minibatch accuracy: 82.8%
 09-06 02:07:03.434 assignment_02_fullyconnected.py:107 INFO Test accuracy: 82.2%
 
+Tensorflow two-layer perceptron with Relu:
+09-06 02:55:32.550 assignment_02_fullyconnected.py:144 INFO Minibatch loss at step 30000 is 0.051968
+09-06 02:55:32.810 assignment_02_fullyconnected.py:153 INFO Train accuracy: 95.5%
+09-06 02:55:32.810 assignment_02_fullyconnected.py:154 INFO Test accuracy: 85.9%
+
+Logistic classifier (no regularization):
+09-07 01:42:45.269 assignment_03_regularization.py:66 INFO Test accuracy: 81.2%
+Logistic classifier (L2 regularization 0.1):
+09-07 01:45:48.298 assignment_03_regularization.py:66 INFO Test accuracy: 79.2%
+Logistic classifier (L2 regularization 0.01):
+09-07 01:43:50.271 assignment_03_regularization.py:66 INFO Test accuracy: 81.4%
+Logistic classifier (L2 regularization 0.001):
+09-07 01:44:58.132 assignment_03_regularization.py:66 INFO Test accuracy: 82.5%
+
+Perceptron regularization:
+1: 10%
+0.1: 70.4%
+0.01: 83.2%
+0.001: 87.2%
+0.0001: 82.8%
+0.0: 81.7%
+
+Overfitting:
+3 batches: Test accuracy: 75.0%
+3 batches with dropout: Test accuracy: 76.2%
+6 batches: Test accuracy: 79.4%
+6 batches with dropout: Test accuracy: 80.0%
+
+Perceptron, adam optimizer, regularization, dropout:
+09-09 00:31:25.119 assignment_03_regularization.py:179 INFO Minibatch loss at step 2752000 is 0.259224
+09-09 00:31:25.487 assignment_03_regularization.py:190 INFO Train accuracy: 99.6%
+09-09 00:31:25.488 assignment_03_regularization.py:191 INFO Test accuracy: 90.8%
+
+MLP, 1024-128-10, with batch norm:
+09-10 03:15:36.075 assignment_03_regularization.py:246 INFO Minibatch loss at step 228000 is 0.135292
+09-10 03:15:36.076 assignment_03_regularization.py:247 INFO Minibatch accuracy: 94.53%
+09-10 03:15:36.077 assignment_03_regularization.py:252 INFO Sample logits: array([[ 18.675,  -3.485,  -7.052,  -5.376,  -6.394,  -8.051,  -5.233,
+          1.689,  -9.407, -10.327]], dtype=float32) mean: 7.568955
+09-10 03:15:36.489 assignment_03_regularization.py:262 INFO Train accuracy: 97.55% loss: 0.090294
+09-10 03:15:36.490 assignment_03_regularization.py:263 INFO Test accuracy: 91.18% loss: 0.338719
 
