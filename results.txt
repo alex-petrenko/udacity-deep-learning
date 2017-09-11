@@ -81,10 +81,13 @@ Perceptron, adam optimizer, regularization, dropout:
 09-09 00:31:25.488 assignment_03_regularization.py:191 INFO Test accuracy: 90.8%
 
 MLP, 1024-128-10, with batch norm:
-09-10 03:15:36.075 assignment_03_regularization.py:246 INFO Minibatch loss at step 228000 is 0.135292
-09-10 03:15:36.076 assignment_03_regularization.py:247 INFO Minibatch accuracy: 94.53%
-09-10 03:15:36.077 assignment_03_regularization.py:252 INFO Sample logits: array([[ 18.675,  -3.485,  -7.052,  -5.376,  -6.394,  -8.051,  -5.233,
-          1.689,  -9.407, -10.327]], dtype=float32) mean: 7.568955
-09-10 03:15:36.489 assignment_03_regularization.py:262 INFO Train accuracy: 97.55% loss: 0.090294
-09-10 03:15:36.490 assignment_03_regularization.py:263 INFO Test accuracy: 91.18% loss: 0.338719
+09-10 23:05:53.537 assignment_03_regularization.py:261 INFO Minibatch loss at step 950000 is 0.031618
+09-10 23:05:53.537 assignment_03_regularization.py:262 INFO Minibatch accuracy: 98.83%
+09-10 23:05:53.539 assignment_03_regularization.py:269 INFO Sample logits: array([[-13.784,  -9.411, -15.099,  19.47 , -16.256, -14.91 , -16.236,
+        -16.417, -21.607, -15.767]], dtype=float32) mean: 15.895628
+09-10 23:05:53.997 assignment_03_regularization.py:280 INFO Train accuracy: 99.58% loss: 0.014628
+09-10 23:05:53.997 assignment_03_regularization.py:281 INFO Test accuracy: 91.35% loss: 0.470004
 
+MLP, sanitized dataset, regularization:
+09-11 22:06:26.026 assignment_03_regularization.py:376 INFO Train loss: 0.123301, train accuracy: 99.24%
+09-11 22:06:26.026 assignment_03_regularization.py:377 INFO Test loss: 0.258194, TEST ACCURACY: 96.42%   <<<<<<<

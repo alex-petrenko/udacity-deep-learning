@@ -11,6 +11,8 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.data import Dataset
+
 from utils import *
 from dnn_utils import *
 from dataset_utils import *
@@ -224,10 +226,10 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
         keep_prob = tf.placeholder(tf.float32)
         is_training = tf.placeholder(tf.bool, name='is_training')
 
-        fc1 = dense_batch_relu_dropout(x, 1024, is_training, keep_prob, 'fc1')
-        fc2 = dense_batch_relu_dropout(fc1, 300, is_training, keep_prob, 'fc2')
-        fc3 = dense_batch_relu_dropout(fc2, 50, is_training, keep_prob, 'fc3')
-        logits = dense(fc3, NUM_CLASSES, 'logits')
+        fc1 = dense_batch_relu_dropout(x, 1024, is_training, keep_prob, None, 'fc1')
+        fc2 = dense_batch_relu_dropout(fc1, 300, is_training, keep_prob, None, 'fc2')
+        fc3 = dense_batch_relu_dropout(fc2, 50, is_training, keep_prob, None, 'fc3')
+        logits = dense(fc3, NUM_CLASSES, None, 'logits')
 
         with tf.name_scope('accuracy'):
             accuracy = tf.reduce_mean(
@@ -240,7 +242,7 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             # Ensures that we execute the update_ops before performing the train_step
-            train_step = tf.train.AdamOptimizer(learning_rate=1e-5, epsilon=1e-3).minimize(loss)
+            train_step = tf.train.AdamOptimizer(learning_rate=1e-3, epsilon=1e-3).minimize(loss)
 
     with tf.Session(graph=graph) as sess:
         tf.global_variables_initializer().run()
@@ -254,8 +256,6 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
             sess.run(train_step, feed_dict=feed)
 
             if step % 1000 == 0:
-                np.set_printoptions(precision=3)
-
                 test_feed = {x: batch_data, y: batch_labels, keep_prob: 0.5, is_training: False}
                 ac, l = sess.run([accuracy, loss], feed_dict=test_feed)
                 logger.info('Minibatch loss at step %d is %f', step, l)
@@ -280,10 +280,110 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
                 logger.info('Train accuracy: %.2f%% loss: %f', train_ac * 100, train_l)
                 logger.info('Test accuracy: %.2f%% loss: %f', test_ac * 100, test_l)
 
+def train_deeper_better(train_data, train_labels, test_data, test_labels):
+    """Same as 'train_deeper', but now with tf.contrib.data.Dataset input pipeline."""
+    regularization_coeff = 0.00001
+
+    graph = tf.Graph()
+    with graph.as_default():
+        tf.set_random_seed(52)
+
+        # dataset definition
+        dataset = Dataset.from_tensor_slices({'x': train_data, 'y': train_labels})
+        dataset = dataset.shuffle(buffer_size=20000)
+        dataset = dataset.batch(128)
+        iterator = dataset.make_initializable_iterator()
+        sample = iterator.get_next()
+        x = sample['x']
+        y = sample['y']
+
+        # actual computation graph
+        keep_prob = tf.placeholder(tf.float32)
+        is_training = tf.placeholder(tf.bool, name='is_training')
+
+        regularizer = tf.contrib.layers.l2_regularizer(scale=regularization_coeff)
+
+        fc1 = dense_batch_relu_dropout(x, 2048, is_training, keep_prob, regularizer, 'fc1')
+        fc2 = dense_batch_relu_dropout(fc1, 1024, is_training, keep_prob, regularizer, 'fc2')
+        fc3 = dense_batch_relu_dropout(fc2, 1024, is_training, keep_prob, regularizer, 'fc3')
+        fc4 = dense_batch_relu_dropout(fc3, 1024, is_training, keep_prob, regularizer, 'fc4')
+        fc5 = dense_batch_relu_dropout(fc4, 512, is_training, keep_prob, regularizer, 'fc5')
+        logits = dense(fc5, NUM_CLASSES, regularizer, 'logits')
+
+        with tf.name_scope('accuracy'):
+            accuracy = tf.reduce_mean(
+                tf.cast(tf.equal(tf.argmax(y, 1), tf.argmax(logits, 1)), tf.float32),
+            )
+            accuracy_percent = 100 * accuracy
+
+        with tf.name_scope('loss'):
+            regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+            regularization_loss = tf.reduce_sum(regularization_losses)
+            cross_entropy_loss = tf.reduce_mean(
+                tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y),
+            )
+            loss = cross_entropy_loss + regularization_loss
+
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            # ensures that we execute the update_ops before performing the train_op
+            # needed for batch normalization (apparently)
+            train_op = tf.train.AdamOptimizer(learning_rate=(1e-5), epsilon=1e-3).minimize(loss)
+
+    with tf.Session(graph=graph) as sess:
+        tf.global_variables_initializer().run()
+
+        tf.logging.set_verbosity(tf.logging.FATAL)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+        logger.info('Starting training...')
+        step = 0
+        epoch = 0
+        while True:
+            sess.run(iterator.initializer, feed_dict={})
+            while True:
+                step += 1
+                try:
+                    sess.run(train_op, feed_dict={keep_prob: 0.5, is_training: True})
+                    if step % 1000 == 0:
+                        l, reg_l, ac = sess.run(
+                            [loss, regularization_loss, accuracy_percent],
+                            feed_dict={keep_prob: 0.5, is_training: False},
+                        )
+                        logger.info(
+                            'Minibatch loss: %f, reg loss: %f, accuracy: %.2f%%',
+                            l, reg_l, ac,
+                        )
+                except tf.errors.OutOfRangeError:
+                    logger.info('End of epoch #%d', epoch)
+                    break
+
+            # end of epoch
+            sample_logits = sess.run(
+                logits, feed_dict={x: train_data[:1], keep_prob: 1, is_training: False},
+            )
+            logger.info(
+                'Sample logits: %r mean: %f', sample_logits, np.mean(np.absolute(sample_logits)),
+            )
+
+            train_l, train_ac = sess.run(
+                [loss, accuracy_percent],
+                feed_dict={x: train_data, y: train_labels, keep_prob: 1, is_training: False},
+            )
+            test_l, test_ac = sess.run(
+                [loss, accuracy_percent],
+                feed_dict={x: test_data, y: test_labels, keep_prob: 1, is_training: False},
+            )
+            logger.info('Train loss: %f, train accuracy: %.2f%%', train_l, train_ac)
+            logger.info('Test loss: %f, TEST ACCURACY: %.2f%%   <<<<<<<', test_l, test_ac)
+
+            epoch += 1
+            logger.info('Starting new epoch #%d!', epoch)
+
 def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
-    tf.logging.set_verbosity(logging.WARN)
+    np.set_printoptions(precision=3)
 
     args = parse_args()
     logger.info('Args: %r', args)
@@ -299,7 +399,7 @@ def main():
     logger.info('%r %r', test_dataset.shape, test_labels.shape)
     logger.info('%r %r', valid_dataset.shape, valid_labels.shape)
 
-    train_deeper(train_dataset, train_labels, test_dataset, test_labels)
+    train_deeper_better(train_dataset, train_labels, test_dataset, test_labels)
 
     return 0
 
