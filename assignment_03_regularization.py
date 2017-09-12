@@ -8,6 +8,9 @@ import os
 import sys
 import logging
 import argparse
+
+from os.path import join
+
 import numpy as np
 import tensorflow as tf
 
@@ -19,6 +22,9 @@ from dataset_utils import *
 
 
 logger = logging.getLogger(os.path.basename(__file__))  # pylint: disable=invalid-name
+
+SUMMARY_FOLDER = './.summary'
+SAVER_FOLDER = './.sessions'
 
 
 def parse_args():
@@ -280,13 +286,30 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
                 logger.info('Train accuracy: %.2f%% loss: %f', train_ac * 100, train_l)
                 logger.info('Test accuracy: %.2f%% loss: %f', test_ac * 100, test_l)
 
+def layer_summaries(tensor, scope):
+    """Add basic summaries for 1-dimensional tensors."""
+    logger.info('Adding summaries for tensor %r', tensor)
+    with tf.name_scope(scope):
+        mean = tf.reduce_mean(tensor)
+        tf.summary.scalar('mean', mean)
+        stddev = tf.sqrt(tf.reduce_mean(tf.square(tensor - mean)))
+        tf.summary.scalar('stddev', stddev)
+        tf.summary.scalar('max', tf.reduce_max(tensor))
+        tf.summary.scalar('min', tf.reduce_min(tensor))
+        tf.summary.histogram('histogram', tensor)
+
 def train_deeper_better(train_data, train_labels, test_data, test_labels):
     """Same as 'train_deeper', but now with tf.contrib.data.Dataset input pipeline."""
     regularization_coeff = 0.00001
+    saver_path = join(SAVER_FOLDER, train_deeper_better.__name__)
 
     graph = tf.Graph()
     with graph.as_default():
         tf.set_random_seed(52)
+
+        global_step_tensor = tf.contrib.framework.get_or_create_global_step()
+        epoch_tensor = tf.Variable(0, trainable=False, name='epoch')
+        next_epoch = tf.assign_add(epoch_tensor, 1)
 
         # dataset definition
         dataset = Dataset.from_tensor_slices({'x': train_data, 'y': train_labels})
@@ -306,15 +329,18 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
         fc1 = dense_batch_relu_dropout(x, 2048, is_training, keep_prob, regularizer, 'fc1')
         fc2 = dense_batch_relu_dropout(fc1, 1024, is_training, keep_prob, regularizer, 'fc2')
         fc3 = dense_batch_relu_dropout(fc2, 1024, is_training, keep_prob, regularizer, 'fc3')
-        fc4 = dense_batch_relu_dropout(fc3, 1024, is_training, keep_prob, regularizer, 'fc4')
+        fc4 = dense_batch_relu_dropout(fc3, 512, is_training, keep_prob, regularizer, 'fc4')
         fc5 = dense_batch_relu_dropout(fc4, 512, is_training, keep_prob, regularizer, 'fc5')
         logits = dense(fc5, NUM_CLASSES, regularizer, 'logits')
+
+        layer_summaries(logits, 'logits_summaries')
 
         with tf.name_scope('accuracy'):
             accuracy = tf.reduce_mean(
                 tf.cast(tf.equal(tf.argmax(y, 1), tf.argmax(logits, 1)), tf.float32),
             )
             accuracy_percent = 100 * accuracy
+            tf.summary.scalar('accuracy_percent', accuracy_percent)
 
         with tf.name_scope('loss'):
             regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
@@ -323,33 +349,52 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
                 tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y),
             )
             loss = cross_entropy_loss + regularization_loss
+            tf.summary.scalar('regularization_loss', regularization_loss)
+            tf.summary.scalar('cross_entropy_loss', cross_entropy_loss)
+            tf.summary.scalar('loss', loss)
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             # ensures that we execute the update_ops before performing the train_op
             # needed for batch normalization (apparently)
-            train_op = tf.train.AdamOptimizer(learning_rate=(1e-5), epsilon=1e-3).minimize(loss)
+            optimizer = tf.train.AdamOptimizer(learning_rate=(1e-4), epsilon=1e-3)
+            train_op = optimizer.minimize(loss, global_step=global_step_tensor)
+
+        all_summaries = tf.summary.merge_all()
+        train_writer = tf.summary.FileWriter(join(SUMMARY_FOLDER, 'train'))
+        batch_writer = tf.summary.FileWriter(join(SUMMARY_FOLDER, 'batch'))
+        test_writer = tf.summary.FileWriter(join(SUMMARY_FOLDER, 'test'))
+
+        saver = tf.train.Saver(max_to_keep=3)
 
     with tf.Session(graph=graph) as sess:
-        tf.global_variables_initializer().run()
+        try:
+            saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir=SAVER_FOLDER))
+        except ValueError as exc:
+            logger.info('Could not restore previous session! %r', exc)
+            logger.info('Starting from scratch!')
+            tf.global_variables_initializer().run()
 
         tf.logging.set_verbosity(tf.logging.FATAL)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         logger.info('Starting training...')
-        step = 0
-        epoch = 0
+        epoch = epoch_tensor.eval()
+        logger.info('Current epoch %d', epoch)
+        new_epoch = True
         while True:
             sess.run(iterator.initializer, feed_dict={})
             while True:
-                step += 1
+                step = tf.train.global_step(sess, tf.train.get_global_step())
                 try:
                     sess.run(train_op, feed_dict={keep_prob: 0.5, is_training: True})
-                    if step % 1000 == 0:
-                        l, reg_l, ac = sess.run(
-                            [loss, regularization_loss, accuracy_percent],
+                    if new_epoch:
+                        new_epoch = False
+                        l, reg_l, ac, summaries = sess.run(
+                            [loss, regularization_loss, accuracy_percent, all_summaries],
                             feed_dict={keep_prob: 0.5, is_training: False},
                         )
+                        batch_writer.add_summary(summaries, global_step=step)
                         logger.info(
                             'Minibatch loss: %f, reg loss: %f, accuracy: %.2f%%',
                             l, reg_l, ac,
@@ -359,25 +404,30 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
                     break
 
             # end of epoch
-            sample_logits = sess.run(
-                logits, feed_dict={x: train_data[:1], keep_prob: 1, is_training: False},
-            )
-            logger.info(
-                'Sample logits: %r mean: %f', sample_logits, np.mean(np.absolute(sample_logits)),
-            )
+            previous_epoch = epoch
+            epoch = next_epoch.eval()
+            new_epoch = True
+            if previous_epoch % 5 == 0:
+                saver.save(sess, saver_path, global_step=previous_epoch)
 
-            train_l, train_ac = sess.run(
-                [loss, accuracy_percent],
-                feed_dict={x: train_data, y: train_labels, keep_prob: 1, is_training: False},
+            def get_eval_dict(data, labels):
+                """Data for evaluation."""
+                return {x: data, y: labels, keep_prob: 1, is_training: False}
+
+            train_l, train_ac, summaries = sess.run(
+                [loss, accuracy_percent, all_summaries],
+                feed_dict=get_eval_dict(train_data[:10000], train_labels[:10000]),
             )
-            test_l, test_ac = sess.run(
-                [loss, accuracy_percent],
-                feed_dict={x: test_data, y: test_labels, keep_prob: 1, is_training: False},
+            train_writer.add_summary(summaries, global_step=step)
+
+            test_l, test_ac, summaries = sess.run(
+                [loss, accuracy_percent, all_summaries],
+                feed_dict=get_eval_dict(test_data, test_labels),
             )
+            test_writer.add_summary(summaries, global_step=step)
+
             logger.info('Train loss: %f, train accuracy: %.2f%%', train_l, train_ac)
             logger.info('Test loss: %f, TEST ACCURACY: %.2f%%   <<<<<<<', test_l, test_ac)
-
-            epoch += 1
             logger.info('Starting new epoch #%d!', epoch)
 
 def main():
@@ -388,12 +438,20 @@ def main():
     args = parse_args()
     logger.info('Args: %r', args)
 
+    if tf.gfile.Exists(SUMMARY_FOLDER):
+        tf.gfile.DeleteRecursively(SUMMARY_FOLDER)
+    tf.gfile.MakeDirs(SUMMARY_FOLDER)
+
+    tf.gfile.MakeDirs(SAVER_FOLDER)
+
     pickle_filename = PICKLE_FILE_SANITIZED if args.sanitized else PICKLE_FILE
     datasets = load_datasets(pickle_filename)
 
     train_dataset, train_labels = get_flattened_dataset(datasets, 'train')
     test_dataset, test_labels = get_flattened_dataset(datasets, 'valid')
     valid_dataset, valid_labels = get_flattened_dataset(datasets, 'test')
+
+    del datasets
 
     logger.info('%r %r', train_dataset.shape, train_labels.shape)
     logger.info('%r %r', test_dataset.shape, test_labels.shape)

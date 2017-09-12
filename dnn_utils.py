@@ -31,7 +31,7 @@ def dense_batch_relu_dropout(x, size, is_training, keep_prob, regularizer, scope
     with tf.variable_scope(scope):
         fc = dense(x, size, regularizer, 'dense')
         fc_norm = tf.contrib.layers.batch_norm(
-            fc, center=True, scale=True, is_training=is_training, scope='bn',
+            fc, center=True, scale=True, is_training=is_training, fused=True, scope='bn',
         )
         fc_relu = tf.nn.relu(fc_norm, 'relu')
         return tf.nn.dropout(fc_relu, keep_prob)

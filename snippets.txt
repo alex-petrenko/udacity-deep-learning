@@ -12,3 +12,23 @@ def session_collect_metadata():
     trace_file = open('timeline.ctf.json', 'w')
     trace_file.write(trace.generate_chrome_trace_format())
     return
+
+
+
+_ = tf.ConfigProto(inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
+
+
+
+with tf.name_scope('Adam'):
+    if False:
+        gradients = optimizer.compute_gradients(loss)
+        for grad_var_pair in gradients:
+            current_gradient = grad_var_pair[0]
+            current_variable = grad_var_pair[1]
+
+            # Relace some characters from the original variable name
+            # tensorboard doesn't accept ':' symbol
+            gradient_name_to_save = current_variable.name.replace(':', '_')
+            # Let's get histogram of gradients for each layer and
+            # visualize them later in tensorboard
+            tf.summary.histogram(gradient_name_to_save, current_gradient)
