@@ -27,11 +27,13 @@ def dense(x, size, regularizer, scope):
         biases_regularizer=regularizer,
     )
 
-def dense_batch_relu_dropout(x, size, is_training, keep_prob, regularizer, scope):
+def dense_batch_relu_dropout(
+        x, size, is_training, keep_prob, regularizer, scope, activation=tf.nn.relu,
+):
     with tf.variable_scope(scope):
         fc = dense(x, size, regularizer, 'dense')
         fc_norm = tf.contrib.layers.batch_norm(
             fc, center=True, scale=True, is_training=is_training, fused=True, scope='bn',
         )
-        fc_relu = tf.nn.relu(fc_norm, 'relu')
-        return tf.nn.dropout(fc_relu, keep_prob)
+        fc_act = activation(fc_norm, 'activation')
+        return tf.nn.dropout(fc_act, keep_prob)

@@ -91,3 +91,5 @@ MLP, 1024-128-10, with batch norm:
 MLP, sanitized dataset, regularization:
 09-11 22:06:26.026 assignment_03_regularization.py:376 INFO Train loss: 0.123301, train accuracy: 99.24%
 09-11 22:06:26.026 assignment_03_regularization.py:377 INFO Test loss: 0.258194, TEST ACCURACY: 96.42%   <<<<<<<
+09-16 04:03:04.724 assignment_03_regularization.py:470 INFO Train loss: 0.167651, train accuracy: 97.99%
+09-16 04:03:04.725 assignment_03_regularization.py:473 INFO Test loss: 0.256166, TEST ACCURACY: 96.51%  BEST ACCURACY 96.64%    <<<<<<<

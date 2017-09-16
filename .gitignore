@@ -105,3 +105,6 @@ ENV/
 *.pickle
 notMNIST_large/
 notMNIST_small/
+.sessions/
+.summary/
+.hyperopt*

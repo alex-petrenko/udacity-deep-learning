@@ -6,6 +6,7 @@ Assignment #03: various regularization techniques.
 
 import os
 import sys
+import time
 import logging
 import argparse
 
@@ -37,9 +38,11 @@ def parse_args():
     )
     return parser.parse_args()
 
-def train_logistic_classifier(train_dataset, train_labels, test_dataset, test_labels, reg_coeff):
+def train_logistic_classifier(train_dataset, train_labels, test_dataset, test_labels, params):
     """Standard logistic classifier with no nonlinearity."""
     batch_size = 128
+    learning_rate = params.get('learning_rate', 0.5)
+    reg_coeff = params.get('weight_decay', 0.00001)
 
     graph = tf.Graph()
     with graph.as_default():
@@ -56,13 +59,12 @@ def train_logistic_classifier(train_dataset, train_labels, test_dataset, test_la
         l2_loss = reg_coeff * l2(weights)
         loss = unregularized_loss + l2_loss
 
-        optimizer = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
         train_prediction = tf.nn.softmax(logits)
         test_prediction = tf.nn.softmax(tf.matmul(tf_test_dataset, weights) + biases)
 
     with tf.Session(graph=graph) as sess:
         tf.global_variables_initializer().run()
-        logger.info('Initialized')
         for step in range(10001):
             offset = (step * batch_size) % (train_labels.shape[0] - batch_size)
             batch_data = train_dataset[offset:(offset + batch_size), :]
@@ -71,14 +73,14 @@ def train_logistic_classifier(train_dataset, train_labels, test_dataset, test_la
             feed_dict = {tf_train_dataset: batch_data, tf_train_labels: batch_labels}
             _, l, predictions = sess.run([optimizer, loss, train_prediction], feed_dict=feed_dict)
 
-            verbose = False
+            verbose = True
             if step % 500 == 0:
                 if verbose:
                     logger.info('Batch loss at step %d is %f', step, l)
                     logger.info('Batch accuracy: %.1f%%', calc_accuracy(predictions, batch_labels))
 
         test_accuracy = calc_accuracy(test_prediction.eval(), test_labels)
-        logger.info('Test accuracy: %.1f%%', test_accuracy)
+    return test_accuracy
 
 def train_perceptron(
         train_dataset, train_labels, test_dataset, test_labels, reg_coeff
@@ -298,9 +300,42 @@ def layer_summaries(tensor, scope):
         tf.summary.scalar('min', tf.reduce_min(tensor))
         tf.summary.histogram('histogram', tensor)
 
-def train_deeper_better(train_data, train_labels, test_data, test_labels):
+def train_deeper_better(train_data, train_labels, test_data, test_labels, params):
     """Same as 'train_deeper', but now with tf.contrib.data.Dataset input pipeline."""
-    regularization_coeff = 0.00001
+    default_params = {
+        'regularization_coeff': 0.00001,
+        'keep_prob': 0.5,
+        'batch_size': 128,
+        'fc1_size': 2048,
+        'fc2_size': 1024,
+        'fc3_size': 1024,
+        'fc4_size': 1024,
+        'fc5_size': 512,
+        'activation': 'tanh',
+    }
+    activation_funcs = {
+        'relu': tf.nn.relu,
+        'tanh': tf.nn.tanh,
+    }
+    def get_param(name):
+        if name in params:
+            return params[name]
+        logger.warning('%s not found in param, use default value %r', name, default_params[name])
+        return default_params[name]
+
+    regularization_coeff = get_param('regularization_coeff')
+    keep_prob_param = get_param('keep_prob')
+    batch_size = int(get_param('batch_size'))
+    fc1_size = int(get_param('fc1_size'))
+    fc2_size = int(get_param('fc2_size'))
+    fc3_size = int(get_param('fc3_size'))
+    fc4_size = int(get_param('fc4_size'))
+    fc5_size = int(get_param('fc5_size'))
+    activation_func = activation_funcs[get_param('activation')]
+
+    save_restore = False
+    time_limit_seconds = 3600
+
     saver_path = join(SAVER_FOLDER, train_deeper_better.__name__)
 
     graph = tf.Graph()
@@ -313,8 +348,8 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
 
         # dataset definition
         dataset = Dataset.from_tensor_slices({'x': train_data, 'y': train_labels})
-        dataset = dataset.shuffle(buffer_size=20000)
-        dataset = dataset.batch(128)
+        dataset = dataset.shuffle(buffer_size=10000)
+        dataset = dataset.batch(batch_size)
         iterator = dataset.make_initializable_iterator()
         sample = iterator.get_next()
         x = sample['x']
@@ -326,11 +361,16 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
 
         regularizer = tf.contrib.layers.l2_regularizer(scale=regularization_coeff)
 
-        fc1 = dense_batch_relu_dropout(x, 2048, is_training, keep_prob, regularizer, 'fc1')
-        fc2 = dense_batch_relu_dropout(fc1, 1024, is_training, keep_prob, regularizer, 'fc2')
-        fc3 = dense_batch_relu_dropout(fc2, 1024, is_training, keep_prob, regularizer, 'fc3')
-        fc4 = dense_batch_relu_dropout(fc3, 512, is_training, keep_prob, regularizer, 'fc4')
-        fc5 = dense_batch_relu_dropout(fc4, 512, is_training, keep_prob, regularizer, 'fc5')
+        def fully_connected(x, size, name):
+            return dense_batch_relu_dropout(
+                x, size, is_training, keep_prob, regularizer, name, activation_func,
+            )
+
+        fc1 = fully_connected(x, fc1_size, 'fc1')
+        fc2 = fully_connected(fc1, fc2_size, 'fc2')
+        fc3 = fully_connected(fc2, fc3_size, 'fc3')
+        fc4 = fully_connected(fc3, fc4_size, 'fc4')
+        fc5 = fully_connected(fc4, fc5_size, 'fc5')
         logits = dense(fc5, NUM_CLASSES, regularizer, 'logits')
 
         layer_summaries(logits, 'logits_summaries')
@@ -367,32 +407,43 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
 
         saver = tf.train.Saver(max_to_keep=3)
 
+    test_accuracy = 0
+    best_accuracy = 0
     with tf.Session(graph=graph) as sess:
-        try:
-            saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir=SAVER_FOLDER))
-        except ValueError as exc:
-            logger.info('Could not restore previous session! %r', exc)
-            logger.info('Starting from scratch!')
+        restored = False
+        if save_restore:
+            try:
+                saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir=SAVER_FOLDER))
+                restored = True
+            except ValueError as exc:
+                logger.info('Could not restore previous session! %r', exc)
+                logger.info('Starting from scratch!')
+
+        if not restored:
             tf.global_variables_initializer().run()
 
-        tf.logging.set_verbosity(tf.logging.FATAL)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
         logger.info('Starting training...')
+        start_time = time.time()
+        def enough():
+            if time_limit_seconds is None:
+                return False
+            elapsed = time.time() - start_time
+            return elapsed > time_limit_seconds
+
         epoch = epoch_tensor.eval()
-        logger.info('Current epoch %d', epoch)
         new_epoch = True
-        while True:
+        while not enough():
+            logger.info('Starting new epoch #%d!', epoch)
             sess.run(iterator.initializer, feed_dict={})
-            while True:
+            while not enough():
                 step = tf.train.global_step(sess, tf.train.get_global_step())
                 try:
-                    sess.run(train_op, feed_dict={keep_prob: 0.5, is_training: True})
+                    sess.run(train_op, feed_dict={keep_prob: keep_prob_param, is_training: True})
                     if new_epoch:
                         new_epoch = False
                         l, reg_l, ac, summaries = sess.run(
                             [loss, regularization_loss, accuracy_percent, all_summaries],
-                            feed_dict={keep_prob: 0.5, is_training: False},
+                            feed_dict={keep_prob: keep_prob_param, is_training: False},
                         )
                         batch_writer.add_summary(summaries, global_step=step)
                         logger.info(
@@ -407,7 +458,8 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
             previous_epoch = epoch
             epoch = next_epoch.eval()
             new_epoch = True
-            if previous_epoch % 5 == 0:
+
+            if previous_epoch % 5 == 0 and save_restore:
                 saver.save(sess, saver_path, global_step=previous_epoch)
 
             def get_eval_dict(data, labels):
@@ -420,20 +472,35 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels):
             )
             train_writer.add_summary(summaries, global_step=step)
 
-            test_l, test_ac, summaries = sess.run(
+            test_l, test_accuracy, summaries = sess.run(
                 [loss, accuracy_percent, all_summaries],
                 feed_dict=get_eval_dict(test_data, test_labels),
             )
             test_writer.add_summary(summaries, global_step=step)
 
+            best_accuracy = max(best_accuracy, test_accuracy)
+
             logger.info('Train loss: %f, train accuracy: %.2f%%', train_l, train_ac)
-            logger.info('Test loss: %f, TEST ACCURACY: %.2f%%   <<<<<<<', test_l, test_ac)
-            logger.info('Starting new epoch #%d!', epoch)
+            logger.info(
+                'Test loss: %f, TEST ACCURACY: %.2f%%  BEST ACCURACY %.2f%%    <<<<<<<',
+                test_l, test_accuracy, best_accuracy,
+            )
+
+            unacceptable = [50, 60, 70, 80, 81, 82, 83, 84]
+            for i, value in enumerate(unacceptable):
+                if epoch > i and test_accuracy < value:
+                    logger.info('Terminate early!')
+                    return test_accuracy
+
+    return best_accuracy
+
 
 def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
     np.set_printoptions(precision=3)
+    tf.logging.set_verbosity(tf.logging.FATAL)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
     args = parse_args()
     logger.info('Args: %r', args)
@@ -457,7 +524,58 @@ def main():
     logger.info('%r %r', test_dataset.shape, test_labels.shape)
     logger.info('%r %r', valid_dataset.shape, valid_labels.shape)
 
-    train_deeper_better(train_dataset, train_labels, test_dataset, test_labels)
+    # train_deeper_better(train_dataset, train_labels, test_dataset, test_labels, {})
+    # return 0
+
+    param_grid = {
+        'regularization_coeff': np.logspace(-7, -2, num=20),
+        'batch_size': (32, 64, 128, 256),
+        'fc1_size': (128, 256, 512, 1024, 2048, 3000, 4000),
+        'fc2_size': (128, 256, 512, 1024, 2048, 3000),
+        'fc3_size': (128, 256, 512, 1024, 2048, 3000),
+        'fc4_size': (128, 256, 512, 1024, 2048, 3000),
+        'fc5_size': (128, 256, 512, 1024, 2048),
+        'activation': ('relu', 'tanh'),
+    }
+    initial_guess = {
+        'regularization_coeff': 0.00001,
+        'batch_size': 128,
+        'fc1_size': 2048,
+        'fc2_size': 1024,
+        'fc3_size': 1024,
+        'fc4_size': 1024,
+        'fc5_size': 512,
+        'activation': 'tanh',
+    }
+
+    logger.info('Grid: %r', param_grid)
+    def train_func(params):
+        logger.info('Training %r', params)
+        try:
+            ac = train_deeper_better(train_dataset, train_labels, test_dataset, test_labels, params)
+            return ac
+        except KeyboardInterrupt:
+            logger.info('Keyboard interrupt!')
+            raise
+        except Exception as exc:
+            logger.info('Exception %r', exc)
+            return -1000
+
+    from hyperopt import EvolutionaryHyperopt
+    hyperopt = EvolutionaryHyperopt()
+    hyperopt.set_param_grid(param_grid)
+    hyperopt.set_initial_guess(initial_guess)
+    hyperopt.set_evaluation_func(train_func)
+    hyperopt.set_checkpoint_dir('.hyperopt.checkpoints')
+    hyperopt.try_initialize_from_checkpoint()
+
+    try:
+        best = hyperopt.optimize()
+        logger.info(best)
+    except KeyboardInterrupt:
+        logger.info('Terminated!')
+    finally:
+        hyperopt.log_halloffame()
 
     return 0
 
