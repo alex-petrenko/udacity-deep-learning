@@ -234,9 +234,9 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
         keep_prob = tf.placeholder(tf.float32)
         is_training = tf.placeholder(tf.bool, name='is_training')
 
-        fc1 = dense_batch_relu_dropout(x, 1024, is_training, keep_prob, None, 'fc1')
-        fc2 = dense_batch_relu_dropout(fc1, 300, is_training, keep_prob, None, 'fc2')
-        fc3 = dense_batch_relu_dropout(fc2, 50, is_training, keep_prob, None, 'fc3')
+        fc1 = dense_regularized(x, 1024, is_training, keep_prob, None, 'fc1')
+        fc2 = dense_regularized(fc1, 300, is_training, keep_prob, None, 'fc2')
+        fc3 = dense_regularized(fc2, 50, is_training, keep_prob, None, 'fc3')
         logits = dense(fc3, NUM_CLASSES, None, 'logits')
 
         with tf.name_scope('accuracy'):
@@ -288,18 +288,6 @@ def train_deeper(train_dataset, train_labels, test_dataset, test_labels):
                 logger.info('Train accuracy: %.2f%% loss: %f', train_ac * 100, train_l)
                 logger.info('Test accuracy: %.2f%% loss: %f', test_ac * 100, test_l)
 
-def layer_summaries(tensor, scope):
-    """Add basic summaries for 1-dimensional tensors."""
-    logger.info('Adding summaries for tensor %r', tensor)
-    with tf.name_scope(scope):
-        mean = tf.reduce_mean(tensor)
-        tf.summary.scalar('mean', mean)
-        stddev = tf.sqrt(tf.reduce_mean(tf.square(tensor - mean)))
-        tf.summary.scalar('stddev', stddev)
-        tf.summary.scalar('max', tf.reduce_max(tensor))
-        tf.summary.scalar('min', tf.reduce_min(tensor))
-        tf.summary.histogram('histogram', tensor)
-
 def train_deeper_better(train_data, train_labels, test_data, test_labels, params):
     """Same as 'train_deeper', but now with tf.contrib.data.Dataset input pipeline."""
     default_params = {
@@ -311,7 +299,7 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels, params
         'fc3_size': 1024,
         'fc4_size': 1024,
         'fc5_size': 512,
-        'activation': 'tanh',
+        'activation': 'relu',
     }
     activation_funcs = {
         'relu': tf.nn.relu,
@@ -362,7 +350,7 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels, params
         regularizer = tf.contrib.layers.l2_regularizer(scale=regularization_coeff)
 
         def fully_connected(x, size, name):
-            return dense_batch_relu_dropout(
+            return dense_regularized(
                 x, size, is_training, keep_prob, regularizer, name, activation_func,
             )
 
@@ -486,12 +474,6 @@ def train_deeper_better(train_data, train_labels, test_data, test_labels, params
                 test_l, test_accuracy, best_accuracy,
             )
 
-            unacceptable = [50, 60, 70, 80, 81, 82, 83, 84]
-            for i, value in enumerate(unacceptable):
-                if epoch > i and test_accuracy < value:
-                    logger.info('Terminate early!')
-                    return test_accuracy
-
     return best_accuracy
 
 
@@ -508,7 +490,6 @@ def main():
     if tf.gfile.Exists(SUMMARY_FOLDER):
         tf.gfile.DeleteRecursively(SUMMARY_FOLDER)
     tf.gfile.MakeDirs(SUMMARY_FOLDER)
-
     tf.gfile.MakeDirs(SAVER_FOLDER)
 
     pickle_filename = PICKLE_FILE_SANITIZED if args.sanitized else PICKLE_FILE
@@ -523,9 +504,6 @@ def main():
     logger.info('%r %r', train_dataset.shape, train_labels.shape)
     logger.info('%r %r', test_dataset.shape, test_labels.shape)
     logger.info('%r %r', valid_dataset.shape, valid_labels.shape)
-
-    # train_deeper_better(train_dataset, train_labels, test_dataset, test_labels, {})
-    # return 0
 
     param_grid = {
         'regularization_coeff': np.logspace(-7, -2, num=20),
