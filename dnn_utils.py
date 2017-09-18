@@ -93,3 +93,32 @@ def layer_summaries(tensor, scope):
         tf.summary.scalar('max', tf.reduce_max(tensor))
         tf.summary.scalar('min', tf.reduce_min(tensor))
         tf.summary.histogram('histogram', tensor)
+
+def count_total_parameters():
+    """
+    Returns total number of trainable parameters in the current tf graph.
+    https://stackoverflow.com/a/38161314/1645784
+
+    """
+    total_parameters = 0
+    for variable in tf.trainable_variables():
+        # shape is an array of tf.Dimension
+        shape = variable.get_shape()
+        variable_parameters = 1
+        for dim in shape:
+            variable_parameters *= dim.value
+        total_parameters += variable_parameters
+    return total_parameters
+
+def visualize_filters(layer_name):
+    """Add filters to Tensorboard."""
+    with tf.variable_scope(layer_name, reuse=True):
+        kernel = tf.get_variable('weights')
+        with tf.variable_scope('visualization'):
+            x_min = tf.reduce_min(kernel)
+            x_max = tf.reduce_max(kernel)
+            kernel_0_to_1 = (kernel - x_min) / (x_max - x_min)
+            # to tf.image_summary format [batch_size, height, width, channels]
+            kernel_transposed = tf.transpose(kernel_0_to_1, [3, 0, 1, 2])
+            # this will display random 3 filters from the 64 in conv1
+            tf.summary.image(layer_name + '/filters', kernel_transposed, max_outputs=8)

@@ -93,3 +93,17 @@ MLP, sanitized dataset, regularization:
 09-11 22:06:26.026 assignment_03_regularization.py:377 INFO Test loss: 0.258194, TEST ACCURACY: 96.42%   <<<<<<<
 09-16 04:03:04.724 assignment_03_regularization.py:470 INFO Train loss: 0.167651, train accuracy: 97.99%
 09-16 04:03:04.725 assignment_03_regularization.py:473 INFO Test loss: 0.256166, TEST ACCURACY: 96.51%  BEST ACCURACY 96.64%    <<<<<<<
+
+Simple convnet:
+(5,5)->pool->(3,3)->pool->fc1024
+09-18 00:13:39.658 assignment_04_convolutions.py:262 INFO Train loss: 0.162918, train accuracy: 97.81%
+09-18 00:13:39.660 assignment_04_convolutions.py:265 INFO Test loss: 0.150931, TEST ACCURACY: 97.51%  BEST ACCURACY 97.58%    <<<<<<<
+09-18 00:13:39.661 assignment_04_convolutions.py:211 INFO Starting new epoch #66!
+09-18 00:13:39.697 assignment_04_convolutions.py:230 INFO Minibatch loss: 0.385705, reg loss: 0.064659, accuracy: 95.00%
+
+A bit deeper convnet:
+(5,5)->(5,5)->pool->(3,3)->(3,3)->pool->fc1024->fc1024->logits
+2017-09-18 13:50:47.178 assignment_04_convolutions.py:200 INFO Starting new epoch #121!
+2017-09-18 13:50:47.220 assignment_04_convolutions.py:219 INFO Minibatch loss: 0.150696, reg loss: 0.041653, accuracy: 96.88%
+2017-09-18 13:51:42.014 assignment_04_convolutions.py:251 INFO Train loss: 0.068505, train accuracy: 99.28%
+2017-09-18 13:51:42.015 assignment_04_convolutions.py:254 INFO Test loss: 0.118685, TEST ACCURACY: 98.05%  BEST ACCURACY 98.19%    <<<<<<<
